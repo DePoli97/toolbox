@@ -1,0 +1,48 @@
+{
+  "pcba_descriptor": {
+    "id": 337,
+    "revision": "pass-through",
+    "version": 1,
+    "recipe_name": "pass-through",
+    "comment": "",
+    "userId": 1,
+    "lastUpdated": 1697091534,
+    "thumbnail": ""
+  },
+  "top": {
+    "panels": {
+      "boards": [
+        {
+          "mini_boards": [],
+          "board_number": 1,
+          "subtype": ""
+        }
+      ]
+    },
+    "background_image": "",
+    "component_layer": {
+      "alignment": [],
+      "inspectables": []
+    },
+    "finish": "FINISH_UNSPECIFIED",
+    "frame_type": "FRAME_TYPE_UNSPECIFIED",
+    "process_types": [],
+    "profile_id": 0,
+    "background_ratio_px_mm": 41.56751824817518,
+    "thumbnail_ratio_px_mm": 8.313503649635036
+  },
+  "offset": {
+    "x": 0,
+    "y": 0,
+    "z": 0
+  },
+  "size": {
+    "x": 206.8,
+    "y": 160,
+    "z": 0
+  },
+  "tolerance_class": "TOLERANCE_UNSPECIFIED",
+  "barcode_panel_settings": [],
+  "barcode_board_settings": [],
+  "barcode_miniboard_settings": []
+}
