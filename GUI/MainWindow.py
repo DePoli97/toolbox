@@ -3,12 +3,13 @@ import re
 import shutil
 import subprocess
 
-from PyQt5.QtCore import Qt, QSize, QProcess
+from PyQt5.QtCore import Qt, QSize, QProcess, pyqtSlot
 from PyQt5.QtGui import QPixmap, QMouseEvent, QIcon
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QGridLayout, \
     QScrollArea, QProgressBar, QInputDialog, QFileDialog, QApplication
 
 from GUI.side_panel_dialog import PopUpDialog
+from GUI.ScriptEditorWidget import ScriptEditorWidget
 from config import base_path, release_directory, disk_devices
 
 
@@ -85,55 +86,6 @@ class MainWindow(QMainWindow):
         # Add the install release layout to the main layout
         layout.addLayout(install_release_layout)
 
-        # Create a frame for the buttons and titles
-        frame = QWidget()
-        frame_layout = QVBoxLayout(frame)
-        layout.addWidget(frame)
-
-        # Dictionary of button texts and script paths grouped by titles
-        button_script_map = {
-            "MAINTENANCE": [
-                ("./maintenance/restart_wrapper.sh", "Restart Wrapper"),
-                ("./maintenance/restart_sapiens_acquisition.sh", "Restart Acquisition"),
-                ("./maintenance/restart_hardware.sh", "Restart Hardware"),
-                ("./maintenance/restart_calibration.sh", "Restart Calibration"),
-                ("./maintenance/restart_align.sh", "Restart Align"),
-                ("./maintenance/restart_sapiens_ai.sh", "Restart Sapiens-AI"),
-            ],
-            "INSTALLATION": [
-                ("./installation/backup_disk_creation.sh", "Create Backup disk"),
-                ("./installation/ramdisk_disk_creation.sh", "Create Ramdisk disk"),
-                ("", " ")
-            ],
-            "DATABASE": [
-                ("./backup/backup_database.sh", "Backup database"),
-                ("./backup/update_database.sh", "Update database"),
-                ("asdf", "asdfff ")
-            ]
-            # Add more titles and associated button-text:script-path mappings as needed
-        }
-
-        # Create a grid layout for the buttons and titles
-        grid_layout = QGridLayout()
-        frame_layout.addLayout(grid_layout)
-
-        # Create buttons and titles using the button-script map
-        row = 0
-        for title, buttons in button_script_map.items():
-            title_label = QLabel(title)
-            title_label.setStyleSheet("font-weight: bold; font-size: 14px")
-            grid_layout.addWidget(title_label, row, 0, 1, 3, Qt.AlignCenter)
-            row += 1
-
-            for index, (script_path, button_text) in enumerate(buttons):
-                button = QPushButton(button_text)
-                script_path = os.path.join(base_path, script_path)
-                button.clicked.connect(lambda _, path=script_path: self.trigger_script(path))
-                grid_layout.addWidget(button, row, index % 3)
-                if (index + 1) % 3 == 0:
-                    row += 1
-            row += 1
-
         # Create a logs title label
         logs_title_label = QLabel("Logs")
         logs_title_label.setStyleSheet("font-weight: bold; font-size: 14px")
@@ -151,6 +103,10 @@ class MainWindow(QMainWindow):
         self.log_label.setWordWrap(True)
         self.log_label.setAlignment(Qt.AlignTop)
         self.scroll_area.setWidget(self.log_label)  # Use instance variable here
+
+        self.script_widget = ScriptEditorWidget(self)
+        self.script_widget.log_signal.connect(self.log)
+        layout.addWidget(self.script_widget)
 
         # Create a Copy logs button
         copy_button = QPushButton("Copy logs")
@@ -321,7 +277,8 @@ class MainWindow(QMainWindow):
                 output, _ = process.communicate(input=script_content)
 
                 # Append the output to the log label
-                self.log_label.setText(self.log_label.text() + output)
+                self.log(output)
+
         elif "update_database.sh" in script_path:
             # Show a file dialog for the user to select the origin file
             options = QFileDialog.Options()
@@ -357,7 +314,7 @@ class MainWindow(QMainWindow):
             output, _ = process.communicate(input=script_content)
 
             # Append the output to the log label
-            self.log_label.setText(self.log_label.text() + output)
+            self.log(output)
         else:
             # Use QProcess for other scripts
             process = QProcess()
@@ -368,17 +325,21 @@ class MainWindow(QMainWindow):
             process.finished.connect(lambda exit_code, exit_status: process.deleteLater())
 
             # Start the shell script in a subprocess
+            print("Starting script:", script_path)
             process.start(script_path)
 
     def append_log(self, process):
         # Read the available data from the subprocess
         output = process.readAll().data().decode("utf-8")
+        self.log(output)
 
-        # Append the output to the log label
-        self.log_label.setText(self.log_label.text() + output)
+    @pyqtSlot(str)
+    def log(self, message):
+        # Append the message to the log label
+        self.log_label.setText(self.log_label.text() + message + "\n")
 
         # Scroll to the bottom to show the latest log messages
-        scroll_bar = self.scroll_area.verticalScrollBar()  # Access it through the instance variable
+        scroll_bar = self.scroll_area.verticalScrollBar()
         scroll_bar.setValue(scroll_bar.maximum())
 
     def copy_to_clipboard(self):

@@ -1,0 +1,32 @@
+#options_widget {
+    background-color: black;
+    color: white;
+}
+
+#options_widget QLabel {
+    color: white;
+}
+
+*[argument="true"] {
+    border-radius: 5px;
+    color: black;
+    padding: 5px;
+}
+
+*[requiredArgument="true"] {
+    background-color: red;
+}
+
+*[selectedArgument="true"] {
+    background-color: green;
+    color: white;
+}
+
+*[availableArgument="true"] {
+    background-color: white;
+}
+
+*[notAvailableArgument="true"] {
+    background-color: #404040;
+    color: white;
+}
