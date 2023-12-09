@@ -228,7 +228,7 @@ def main(args):
 if __name__ == '__main__':
     class SaneFormatter(argparse.RawTextHelpFormatter, argparse.ArgumentDefaultsHelpFormatter): pass
     parser = argparse.ArgumentParser(prog=__NAME__,
-                                     usage='run_inspection.py [-h] [--credentials CREDENTIALS] [--id ID] [--version VERSION] [--from-ip FROM_IP] [--times TIMES] [--target TARGET] [--verbose]',
+                                     usage='run_inspection.py [-h] [--credentials CREDENTIALS] [--id ID] [--version VERSION] [--from-ip FROM_IP] [--times TIMES] [--score SCORE] [--verbose]',
                                      description=f'{__NAME__} ({__VERSION_}), maintained by {__AUTHOR__}.\n{__DESCRIPTION__}',
                                      epilog='example usage:\nrun_inspection.py --id=42\n\t\t\t  --times=1000\n',
                                      formatter_class=SaneFormatter)

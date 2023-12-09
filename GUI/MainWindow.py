@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 
 from PyQt5.QtCore import Qt, QSize, QProcess, pyqtSlot
 from PyQt5.QtGui import QPixmap, QMouseEvent, QIcon
@@ -278,7 +279,6 @@ class MainWindow(QMainWindow):
 
                 # Append the output to the log label
                 self.log(output)
-
         elif "update_database.sh" in script_path:
             # Show a file dialog for the user to select the origin file
             options = QFileDialog.Options()
@@ -325,8 +325,12 @@ class MainWindow(QMainWindow):
             process.finished.connect(lambda exit_code, exit_status: process.deleteLater())
 
             # Start the shell script in a subprocess
-            print("Starting script:", script_path)
-            process.start(script_path)
+            if script_path.split(" ")[0].endswith(".py"):
+                process.start(f'"{sys.executable}" {script_path}')
+            else:
+                assert script_path.split(" ")[0].endswith(".sh")
+                # it's a bash script
+                process.start(script_path)
 
     def append_log(self, process):
         # Read the available data from the subprocess

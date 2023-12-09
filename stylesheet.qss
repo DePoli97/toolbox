@@ -14,7 +14,7 @@
 }
 
 *[requiredArgument="true"] {
-    background-color: red;
+    background-color: yellow;
 }
 
 *[selectedArgument="true"] {

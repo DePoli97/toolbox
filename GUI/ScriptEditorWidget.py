@@ -1,14 +1,16 @@
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt
-from PyQt5.QtWidgets import QWidget, QPushButton, QLineEdit, QHBoxLayout, QVBoxLayout, QSizePolicy, QLabel
+from PyQt5.QtWidgets import QWidget, QPushButton, QLineEdit, QHBoxLayout, QVBoxLayout, QSizePolicy, QLabel, QToolTip
 
 
 class ArgumentType(Enum):
+    UNKNOWN = 0
     REQUIRED_WITH_VALUE = 1
     OPTIONAL = 2
     OPTIONAL_WITH_VALUE = 3
@@ -24,26 +26,31 @@ class ArgumentStatus(Enum):
 @dataclass
 class Argument:
     name: str
+    name_repr: str = None
     argument_type: ArgumentType = None
     value_name: str = None
     default_value: str = None
+    description: str = None
 
     def __post_init__(self):
-        self.parse_name(self.name)
+        self.parse_name()
 
-    def parse_name(self, name: str):
-        if re.match(r"\[.* .*\]", name):
+    def parse_name(self):
+        if re.match(r"\[.* .*\]", self.name):
             self.argument_type = ArgumentType.OPTIONAL_WITH_VALUE
-            self.name = name[1:-1].split(" ")[0]
-        elif re.match(r"\[.*\]", name):
+            self.name_repr = self.name[1:-1].split(" ")[0]
+        elif re.match(r"\[.*\]", self.name):
             self.argument_type = ArgumentType.OPTIONAL
-            self.name = name[1:-1]
-        elif re.match(r".* .*", name):
+            self.name_repr = self.name[1:-1]
+        elif re.match(r".* .*", self.name):
             self.argument_type = ArgumentType.REQUIRED_WITH_VALUE
-            self.name = name.split(" ")[0]
+            self.name_repr = self.name.split(" ")[0]
+        else:
+            self.argument_type = ArgumentType.UNKNOWN
+            self.name_repr = self.name
 
     def __repr__(self):
-        return f"Argument({self.name} {self.value_name}={self.default_value}, {self.argument_type})"
+        return f"Argument({self.name} {self.value_name}={self.default_value}, {self.argument_type} ({self.description[:20]}...)"
 
 
 @dataclass
@@ -58,9 +65,10 @@ class RequiredArgumentGroup:
 class OrArgumentGroup:
     arguments: list[RequiredArgumentGroup]
 
-    def __init__(self, arguments: list[RequiredArgumentGroup]):
-        # cumbersome path in order to mark the first argument as a group of required arguments
-        arguments[0] = RequiredArgumentGroup([arguments[0]])
+    def __init__(self, arguments: list[RequiredArgumentGroup], fix_first_argument: bool = False):
+        if fix_first_argument:
+            # Wrap the first argument in a RequiredArgumentGroup
+            arguments[0] = RequiredArgumentGroup([arguments[0]])
         self.arguments = arguments
 
     def __repr__(self):
@@ -86,7 +94,7 @@ def split_arguments(description: str) -> list[Argument | OrArgumentGroup]:
             j = current_char + 1
             while description[j] != ")":
                 j += 1
-            arguments.append(OrArgumentGroup(split_arguments(description[current_char + 1 : j])))
+            arguments.append(OrArgumentGroup(split_arguments(description[current_char + 1 : j]), fix_first_argument=True))
             current_char = j + 1
 
         elif description[current_char] == "|":
@@ -128,19 +136,23 @@ def split_arguments(description: str) -> list[Argument | OrArgumentGroup]:
     return arguments
 
 
-def read_description_of_arguments(args: list[Argument, OrArgumentGroup], description: list[str]) -> list[Argument, OrArgumentGroup]:
+def read_description_of_arguments(
+    command_arguments: list[Argument, OrArgumentGroup], description: list[str]
+) -> list[Argument, OrArgumentGroup]:
+
     description = map(lambda x: x.strip(), description)
     fixed_arguments = []
+
     for argument in description:
         if not argument.startswith("-"):
-            # argument does not start with a dash, so it belongs to the previous argument
+            # Argument does not start with a dash, so it belongs to the previous argument
             fixed_arguments[-1] += "  " + argument
         else:
             fixed_arguments.append(argument)
 
-    arguments_with_description = []
-    # Split fixed arguments into: name, description, (default: <default>)
-    for argument in fixed_arguments:
+    def extract_argument_properties(argument: str) -> Argument:
+        # Split fixed arguments into: name, value name, description, default value
+
         name = argument.split("  ")[0]
         value_name = None
         # if a comma is found, pick the first part as the name
@@ -155,19 +167,38 @@ def read_description_of_arguments(args: list[Argument, OrArgumentGroup], descrip
             default_value = description.split("(default: ")[1].split(")")[0]
             description = description.split("(default: ")[0]
 
-        for arg in args:
-            if isinstance(arg, Argument):
-                if arg.name == name:
-                    if value_name is not None:
-                        arg.value_name = value_name
-                    if description:
-                        arg.description = description
-                    if default_value is not None:
-                        arg.default_value = default_value
-                    arguments_with_description.append(arg)
-                    break
+        return Argument(name=name, value_name=value_name, default_value=default_value, description=description)
+
+    fixed_arguments = list(map(extract_argument_properties, fixed_arguments))
+
+    def find_corresponding_argument(argument: Argument, argument_list: list[Argument]) -> Argument:
+        for arg in argument_list:
+            if arg.name_repr == argument.name_repr:
+                return arg
+
+        raise ValueError(f"Argument not found: {argument} in {argument_list}")
+
+    arguments_with_description = []
+    for argument in command_arguments:
+        if isinstance(argument, Argument):
+            argument_with_description = find_corresponding_argument(argument, fixed_arguments)
+            argument_with_description.argument_type = argument.argument_type
+            arguments_with_description.append(argument_with_description)
+        elif isinstance(argument, OrArgumentGroup):
+            required_groups = []
+            for required_argument_group in argument.arguments:
+                arguments = []
+                for arg in required_argument_group.arguments:
+                    argument_with_description = find_corresponding_argument(arg, fixed_arguments)
+                    argument_with_description.argument_type = arg.argument_type
+                    arguments.append(argument_with_description)
+                required_groups.append(RequiredArgumentGroup(arguments))
+            arguments_with_description.append(OrArgumentGroup(required_groups))
+        else:
+            raise ValueError("Invalid argument type")
 
     return arguments_with_description
+
 
 @dataclass
 class Script:
@@ -196,15 +227,16 @@ class DisplayArgumentOptionWidget(QPushButton):
 
         if argument.argument_type in (ArgumentType.REQUIRED_WITH_VALUE, ArgumentType.OPTIONAL_WITH_VALUE):
             if argument.default_value is None:
-                self.setText(f"{argument.name}=...")
+                self.setText(f"{argument.name_repr}=...")
             else:
-                self.setText(f"{argument.name}={argument.default_value}")
+                self.setText(f"{argument.name_repr}={argument.default_value}")
         else:
-            self.setText(argument.name)
+            self.setText(argument.name_repr)
 
         self.setProperty("argument", True)
         if self.status == ArgumentStatus.REQUIRED:
             self.setProperty("requiredArgument", True)
+            self.setText(self.text() + "*")
         elif self.status == ArgumentStatus.SELECTED:
             self.setProperty("selectedArgument", True)
             self.setEnabled(False)
@@ -221,6 +253,9 @@ class DisplayArgumentOptionWidget(QPushButton):
 
     def emit_add(self):
         self.add_signal.emit(self)
+
+    def enterEvent(self, a0):
+        QToolTip.showText(self.mapToGlobal(self.rect().topRight()), self.argument.description)
 
 
 class DisplayScriptOptionWidget(QPushButton):
@@ -295,6 +330,7 @@ class ArgumentWidget(QWidget):
         self.setLayout(self.main_layout)
 
         self.command_name = QLabel()
+        self.command_name.enterEvent = self.command_name_enter_event
         self.main_layout.addWidget(self.command_name)
 
         if argument.argument_type in (ArgumentType.REQUIRED_WITH_VALUE, ArgumentType.OPTIONAL_WITH_VALUE):
@@ -304,20 +340,23 @@ class ArgumentWidget(QWidget):
             self.input_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
             self.main_layout.addWidget(self.input_widget)
 
-            self.command_name.setText(f"{argument.name}=")
+            self.command_name.setText(f"{argument.name_repr}=")
         else:
-            self.command_name.setText(argument.name)
+            self.command_name.setText(argument.name_repr)
 
         self.delete_button = QPushButton("X")
         self.delete_button.setMaximumWidth(20)
         self.delete_button.clicked.connect(self.emit_delete)
         self.main_layout.addWidget(self.delete_button)
 
+    def command_name_enter_event(self, a0):
+        QToolTip.showText(self.mapToGlobal(self.rect().topLeft()), self.argument.description)
+
     def emit_delete(self):
         self.delete_signal.emit(self)
 
     def get_command(self):
-        return self.argument.name + ("=" + self.value if self.value is not None else "")
+        return self.argument.name_repr + ("=" + self.value if self.value is not None else "")
 
 
 class ScriptWidget(QWidget):
@@ -434,21 +473,11 @@ class ScriptEditorWidget(QWidget):
             def add_argument(
                 layout, selected_arguments, argument: Argument, status: ArgumentStatus = ArgumentStatus.AVAILABLE
             ):
-                vertical_layout = QVBoxLayout()
-                layout.addLayout(vertical_layout)
-                label = QLabel()
-                label.setAlignment(Qt.AlignBottom)
-                if argument.argument_type == ArgumentType.REQUIRED_WITH_VALUE:
-                    label.setText("Required argument")
-                elif argument.argument_type in (ArgumentType.OPTIONAL, ArgumentType.OPTIONAL_WITH_VALUE):
-                    label.setText("Optional argument")
-                vertical_layout.addWidget(label)
-
                 for selected_argument in selected_arguments:
-                    if selected_argument.argument.name == argument.name:
+                    if selected_argument.argument.name_repr == argument.name_repr:
                         status = ArgumentStatus.SELECTED
                         break
-                vertical_layout.addWidget(DisplayArgumentOptionWidget(self, argument, status))
+                layout.addWidget(DisplayArgumentOptionWidget(self, argument, status))
 
             def add_or_argument_group(layout, selected_arguments, argument: OrArgumentGroup):
                 vertical_layout = QVBoxLayout()
@@ -461,7 +490,7 @@ class ScriptEditorWidget(QWidget):
                 argument_selected_row = None
                 for i, required_arg_list in enumerate(argument.arguments):
                     if argument_selected_row is None and any(
-                        selected_argument.argument.name in [arg.name for arg in required_arg_list.arguments]
+                        selected_argument.argument.name_repr in [arg.name_repr for arg in required_arg_list.arguments]
                         for selected_argument in selected_arguments
                     ):
                         argument_selected_row = i
@@ -496,7 +525,7 @@ class ScriptEditorWidget(QWidget):
                     any_selected_in_group = False
                     for argument in required_argument_group.arguments:
                         for selected_argument in selected_arguments:
-                            if selected_argument.argument.name == argument.name:
+                            if selected_argument.argument.name_repr == argument.name_repr:
                                 any_selected_in_group = True
                                 break
                     if any_selected_in_group:
@@ -504,13 +533,17 @@ class ScriptEditorWidget(QWidget):
 
                 for argument in required_argument_group.arguments:
                     # Don't mark as required the arguments that are optional
-                    if not any_argument_selected and argument.argument_type in (ArgumentType.OPTIONAL, ArgumentType.OPTIONAL_WITH_VALUE):
+                    if not any_argument_selected and argument.argument_type in (
+                        ArgumentType.OPTIONAL,
+                        ArgumentType.OPTIONAL_WITH_VALUE,
+                    ):
                         status = ArgumentStatus.AVAILABLE
 
                     add_argument(horizontal_layout, selected_arguments, argument, status)
 
             container = QWidget()
             main_layout = QHBoxLayout()
+            main_layout.setContentsMargins(0, 0, 0, 0)
             container.setLayout(main_layout)
             self.available_options_layout.addWidget(container)
 
@@ -574,7 +607,7 @@ class ScriptEditorWidget(QWidget):
     @staticmethod
     def read_python_script(script: Path) -> Script:
         # Get the output of the script's usage
-        command = f"python {script} --help"
+        command = f'"{sys.executable}" {script} --help'
         lines = subprocess.check_output(command, shell=True, text=True).splitlines()
 
         # Get the script name, which is before the version
@@ -604,7 +637,6 @@ class ScriptEditorWidget(QWidget):
                 command += widget.get_command() + " "
 
         self.main_window.trigger_script(command)
-
 
     @pyqtSlot(DisplayScriptOptionWidget)
     def add_script(self, widget: DisplayScriptOptionWidget):
