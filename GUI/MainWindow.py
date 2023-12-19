@@ -6,7 +6,7 @@ import sys
 
 from PyQt5.QtCore import Qt, QSize, QProcess, pyqtSlot
 from PyQt5.QtGui import QPixmap, QMouseEvent, QIcon
-from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QGridLayout, \
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, \
     QScrollArea, QProgressBar, QInputDialog, QFileDialog, QApplication
 
 from GUI.side_panel_dialog import PopUpDialog

@@ -4,6 +4,7 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import List, Optional, Union
 
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt
 from PyQt5.QtWidgets import QWidget, QPushButton, QLineEdit, QHBoxLayout, QVBoxLayout, QSizePolicy, QLabel, QToolTip
@@ -55,7 +56,7 @@ class Argument:
 
 @dataclass
 class RequiredArgumentGroup:
-    arguments: list[Argument]
+    arguments: List[Argument]
 
     def __repr__(self):
         return f"RequiredArgumentGroup({self.arguments})"
@@ -63,9 +64,9 @@ class RequiredArgumentGroup:
 
 @dataclass
 class OrArgumentGroup:
-    arguments: list[RequiredArgumentGroup]
+    arguments: List[RequiredArgumentGroup]
 
-    def __init__(self, arguments: list[RequiredArgumentGroup], fix_first_argument: bool = False):
+    def __init__(self, arguments: List[RequiredArgumentGroup], fix_first_argument: bool = False):
         if fix_first_argument:
             # Wrap the first argument in a RequiredArgumentGroup
             arguments[0] = RequiredArgumentGroup([arguments[0]])
@@ -75,7 +76,7 @@ class OrArgumentGroup:
         return f"OrArgumentGroup({self.arguments})"
 
 
-def split_arguments(description: str) -> list[Argument | OrArgumentGroup]:
+def split_arguments(description: str) -> List[Argument | OrArgumentGroup]:
     # Split the description into individual arguments
     arguments = []
     current_char = 0
@@ -137,8 +138,8 @@ def split_arguments(description: str) -> list[Argument | OrArgumentGroup]:
 
 
 def read_description_of_arguments(
-    command_arguments: list[Argument, OrArgumentGroup], description: list[str]
-) -> list[Argument, OrArgumentGroup]:
+    command_arguments: List[Union[Argument, OrArgumentGroup]], description: list[str]
+) -> List[Union[Argument, OrArgumentGroup]]:
 
     description = map(lambda x: x.strip(), description)
     fixed_arguments = []
@@ -171,7 +172,7 @@ def read_description_of_arguments(
 
     fixed_arguments = list(map(extract_argument_properties, fixed_arguments))
 
-    def find_corresponding_argument(argument: Argument, argument_list: list[Argument]) -> Argument:
+    def find_corresponding_argument(argument: Argument, argument_list: List[Argument]) -> Argument:
         for arg in argument_list:
             if arg.name_repr == argument.name_repr:
                 return arg
@@ -206,13 +207,13 @@ class Script:
     path: Path
     version: str
     author: str
-    args: list[Argument]
+    args: List[Argument]
 
 
 @dataclass
 class Folder:
     name: str
-    scripts: list[Script]
+    scripts: List[Script]
 
 
 class DisplayArgumentOptionWidget(QPushButton):
@@ -356,7 +357,9 @@ class ArgumentWidget(QWidget):
         self.delete_signal.emit(self)
 
     def get_command(self):
-        return self.argument.name_repr + ("=" + self.value if self.value is not None else "")
+        if self.argument.argument_type in (ArgumentType.REQUIRED_WITH_VALUE, ArgumentType.OPTIONAL_WITH_VALUE):
+            return self.argument.name_repr + "=" + self.input_widget.text()
+        return self.argument.name_repr
 
 
 class ScriptWidget(QWidget):
@@ -408,8 +411,8 @@ class ScriptEditorWidget(QWidget):
         super(ScriptEditorWidget, self).__init__(main_window)
         self.main_window = main_window
 
-        self.python_scripts: list[Script] = self.read_python_scripts()
-        self.shell_scripts: list[Folder] = self.read_shell_scripts()
+        self.python_scripts: List[Script] = self.read_python_scripts()
+        self.shell_scripts: List[Folder] = self.read_shell_scripts()
 
         self.selected_script: Script = None
 
@@ -434,7 +437,7 @@ class ScriptEditorWidget(QWidget):
         self.options_widget.setLayout(self.available_options_layout)
         self.options_widget.hide()
 
-    def get_available_scripts(self) -> list[DisplayArgumentOptionWidget]:
+    def get_available_scripts(self) -> List[DisplayArgumentOptionWidget]:
         options = []
         assert self.selected_script is None
 
@@ -570,7 +573,7 @@ class ScriptEditorWidget(QWidget):
         super(ScriptEditorWidget, self).resizeEvent(event)
         self.update_options_widget_size()
 
-    def get_selected_arguments(self) -> list[ArgumentWidget]:
+    def get_selected_arguments(self) -> List[ArgumentWidget]:
         widgets = []
         for i in range(self.command_parts_layout.count()):
             widget = self.command_parts_layout.itemAt(i).widget()
@@ -578,12 +581,12 @@ class ScriptEditorWidget(QWidget):
                 widgets.append(widget)
         return widgets
 
-    def read_python_scripts(self) -> list[Script]:
+    def read_python_scripts(self) -> List[Script]:
         # Get all .py files inside the scripts folder
         python_scripts = Path("scripts").glob("*.py")
         return [self.read_python_script(script) for script in python_scripts]
 
-    def read_shell_scripts(self) -> list[Folder]:
+    def read_shell_scripts(self) -> List[Folder]:
         # Get all folders inside the scripts folder
         subdirectories = [folder for folder in Path("scripts").iterdir() if folder.is_dir()]
         folders = []
@@ -635,6 +638,8 @@ class ScriptEditorWidget(QWidget):
             widget = self.command_parts_layout.itemAt(i).widget()
             if isinstance(widget, ArgumentWidget):
                 command += widget.get_command() + " "
+
+        print(f"Running {command}")
 
         self.main_window.trigger_script(command)
 

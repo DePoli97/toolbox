@@ -12,7 +12,6 @@ __AUTHOR__ = 'LT'
 import os
 import argparse
 import subprocess
-from datetime import datetime, timedelta
 import threading
 import re
 import matplotlib
